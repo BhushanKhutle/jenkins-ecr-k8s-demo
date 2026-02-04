@@ -456,3 +456,13 @@ Use stable tool image:
 * ✅ Add centralized logging using Loki + Promtail
 * ✅ Configure TLS with cert-manager
 * ✅ Implement least privilege RBAC for Jenkins
+
+---
+
+## 🧾 Resume Bullet Points
+
+* Deployed Jenkins on kubeadm Kubernetes cluster using Helm with persistent volumes via NFS StorageClass.
+* Implemented end-to-end CI/CD pipeline using Jenkins Kubernetes agent pods.
+* Integrated GitHub webhook to trigger Jenkins builds automatically.
+* Built and pushed Docker images to AWS ECR with versioned tags.
+* Automated Kubernetes deployments with rollout verification and zero manual deployment steps.
