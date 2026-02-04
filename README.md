@@ -1,66 +1,125 @@
-# 📘 End-to-End Project Documentation
+# 🚀 Jenkins on Kubernetes (kubeadm) CI/CD: GitHub → AWS ECR → Kubernetes Deployment
 
-## Jenkins on Kubernetes (kubeadm) + GitHub Webhook + AWS ECR + Auto Deployment
-
-**Author:** Bhushan Khutle (DevOps Engineer)
-
----
-
-## 1. Project Overview
-
-This project implements a complete DevOps CI/CD pipeline:
-
-* ✅ Jenkins installed on Kubernetes (kubeadm cluster) using Helm
-* ✅ Jenkins persistent storage enabled using NFS Dynamic Provisioner (StorageClass)
-* ✅ Jenkins pipelines run using Kubernetes Agent Pods
-* ✅ GitHub push triggers Jenkins automatically using Webhook
-* ✅ Jenkins builds Docker images and pushes to AWS ECR
-* ✅ Jenkins deploys/updates application on Kubernetes automatically
-* ✅ App is reachable using Kubernetes Service and Ingress/ELB
+> **End-to-end DevOps CI/CD project** using Jenkins running on a kubeadm Kubernetes cluster.
+> Automated build + push to **AWS ECR** and auto-deploy to Kubernetes on every GitHub push via Webhook.
 
 ---
 
-## 2. Architecture Flow
+## 📌 Table of Contents
 
-```
+* [Overview](#-overview)
+* [Architecture](#-architecture)
+* [Tech Stack](#-tech-stack)
+* [Prerequisites](#-prerequisites)
+* [Repository Structure](#-repository-structure)
+* [Implementation Steps](#-implementation-steps)
+
+  * [1) Kubernetes Pre-check](#1-kubernetes-pre-check)
+  * [2) Create Jenkins Namespace](#2-create-jenkins-namespace)
+  * [3) StorageClass Setup using NFS Dynamic Provisioner](#3-storageclass-setup-using-nfs-dynamic-provisioner)
+  * [4) Install Jenkins using Helm](#4-install-jenkins-using-helm)
+  * [5) RBAC for Jenkins Kubernetes Deployments](#5-rbac-for-jenkins-kubernetes-deployments)
+  * [6) AWS ECR Repository Setup](#6-aws-ecr-repository-setup)
+  * [7) Configure AWS Credentials in Jenkins](#7-configure-aws-credentials-in-jenkins)
+  * [8) Jenkins Pipeline from GitHub (SCM Integration)](#8-jenkins-pipeline-from-github-scm-integration)
+  * [9) GitHub Webhook Integration](#9-github-webhook-integration)
+  * [10) Validate Deployment](#10-validate-deployment)
+* [Screenshots](#-screenshots)
+* [Troubleshooting](#-troubleshooting)
+* [Future Enhancements](#-future-enhancements)
+* [Resume Bullet Points](#-resume-bullet-points)
+
+---
+
+## ✅ Overview
+
+This project implements a complete CI/CD pipeline:
+
+* ✅ Jenkins deployed **inside Kubernetes** using Helm
+* ✅ Jenkins uses **Persistent Volume** via NFS dynamic provisioning
+* ✅ Jenkins pipeline executes using **Kubernetes Agent Pods**
+* ✅ On every GitHub push, Jenkins pipeline triggers automatically via **Webhook**
+* ✅ Pipeline builds Docker image and pushes to **AWS ECR**
+* ✅ Pipeline deploys/updates application on Kubernetes automatically
+
+---
+
+## 🏗 Architecture
+
+```text
 Developer Push → GitHub Repo
         ↓ (Webhook)
-Jenkins (Running on Kubernetes)
+Jenkins Controller (Kubernetes)
         ↓
-Pipeline runs in Kubernetes Agent Pod
+Jenkins Agent Pod (Kubernetes)
         ↓
 Docker Build
         ↓
-Push Image to AWS ECR
+Push Image → AWS ECR
         ↓
-Deploy to Kubernetes (demo namespace)
+Deploy/Update → Kubernetes namespace
         ↓
-Expose using Service/Ingress
+Expose App → Service / Ingress (ELB)
 ```
 
 ---
 
-## 3. Technologies Used
+## 🧰 Tech Stack
 
-### Kubernetes / DevOps
-
-* Kubernetes cluster created using **kubeadm**
-* Calico CNI
-* Nginx Ingress Controller
-* Jenkins deployed on Kubernetes using Helm
-* Jenkins Kubernetes Agent Pods
-
-### AWS
-
-* AWS ECR (Elastic Container Registry)
-
-### SCM
-
-* GitHub repository + webhook
+* **Kubernetes** (kubeadm)
+* **Helm**
+* **Jenkins** (Helm chart)
+* **NFS Dynamic Provisioner** (`nfs-subdir-external-provisioner`)
+* **AWS ECR**
+* **GitHub Webhooks**
+* **Nginx Ingress Controller**
 
 ---
 
-## 4. Kubernetes Cluster Pre-check
+## ✅ Prerequisites
+
+### Kubernetes
+
+* kubeadm Kubernetes cluster ready
+* `kubectl` configured and working
+
+Verify:
+
+```bash
+kubectl get nodes -o wide
+kubectl get pods -A
+```
+
+### Tools Needed
+
+* Helm 3.x
+* AWS CLI configured (for ECR repo creation)
+* Git
+
+---
+
+## 📂 Repository Structure
+
+GitHub Repo:
+
+```text
+https://github.com/BhushanKhutle/jenkins-ecr-k8s-demo.git
+```
+
+Structure:
+
+```text
+jenkins-ecr-k8s-demo/
+├── Dockerfile
+├── index.html
+└── Jenkinsfile
+```
+
+---
+
+## 🛠 Implementation Steps
+
+### 1) Kubernetes Pre-check
 
 ```bash
 kubectl get nodes -o wide
@@ -70,104 +129,72 @@ kubectl get sc
 
 ---
 
-## 5. Jenkins Installation on Kubernetes
-
-### 5.1 Create Jenkins Namespace
+### 2) Create Jenkins Namespace
 
 ```bash
 kubectl create ns jenkins
 ```
 
-### 5.2 Install Helm (if required)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-helm version
-```
-
 ---
 
-## 6. Storage Setup (No StorageClass Fix)
+### 3) StorageClass Setup using NFS Dynamic Provisioner
 
-The cluster initially had **no StorageClass**, so Jenkins PVC could not bind.
+> Cluster had **no StorageClass**, so PVCs were Pending. We created dynamic provisioning using NFS.
 
-To fix this, NFS-based dynamic provisioning was configured.
-
----
-
-## 7. NFS StorageClass Setup
-
-### 7.1 Setup NFS Server (RHEL)
-
-Install packages:
+#### 3.1 Setup NFS Server (RHEL node)
 
 ```bash
 yum install -y nfs-utils rpcbind
 systemctl enable --now rpcbind
 systemctl enable --now nfs-server
-```
 
-Create export directory:
-
-```bash
 mkdir -p /mnt/k8s-nfs
 chmod -R 777 /mnt/k8s-nfs
-```
 
-Configure NFS export:
-
-```bash
 cat <<EOF > /etc/exports
 /mnt/k8s-nfs *(rw,sync,no_root_squash,no_subtree_check)
 EOF
-```
 
-Apply export:
-
-```bash
 exportfs -rav
 showmount -e localhost
 ```
 
----
-
-### 7.2 Install NFS Provisioner (Dynamic PV Provisioning)
+#### 3.2 Install NFS Provisioner
 
 ```bash
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
 helm repo update
-```
 
-Install provisioner:
-
-```bash
 helm install nfs-provisioner nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
   -n kube-system \
   --set nfs.server=<NFS_SERVER_IP> \
   --set nfs.path=/mnt/k8s-nfs
 ```
 
-Verify:
+Verify StorageClass:
 
 ```bash
-kubectl get pods -n kube-system | grep nfs
 kubectl get sc
+kubectl get pods -n kube-system | grep nfs
 ```
 
 ---
 
-## 8. Install Jenkins using Helm
+### 4) Install Jenkins using Helm
 
-### 8.1 Add Jenkins Helm Repo
+#### 4.1 Add Jenkins Helm repo
 
 ```bash
 helm repo add jenkins https://charts.jenkins.io
 helm repo update
 ```
 
-### 8.2 Create `values.yaml`
+#### 4.2 Create `values.yaml`
 
-> Note: `controller.adminUser` is deprecated. New format is `controller.admin.username`.
+> Note: Helm chart changed older keys:
+>
+> * ❌ `controller.adminUser`
+> * ✅ `controller.admin.username`
 
 ```yaml
 controller:
@@ -184,7 +211,7 @@ persistence:
   storageClass: "<YOUR_STORAGECLASS_NAME>"
 ```
 
-### 8.3 Install Jenkins
+#### 4.3 Install Jenkins
 
 ```bash
 helm install jenkins jenkins/jenkins -n jenkins -f values.yaml
@@ -198,28 +225,23 @@ kubectl get svc -n jenkins
 kubectl get pvc -n jenkins
 ```
 
-### 8.4 Access Jenkins UI
+Access Jenkins:
 
 ```text
 http://<node-ip>:32000
 ```
 
-Login:
-
-* Username: `admin`
-* Password: `Jenkins@123`
-
 ---
 
-## 9. Jenkins Kubernetes Integration (RBAC)
+### 5) RBAC for Jenkins Kubernetes Deployments
 
-### 9.1 Create ServiceAccount
+#### 5.1 Create ServiceAccount
 
 ```bash
 kubectl -n jenkins create sa jenkins-sa
 ```
 
-### 9.2 ClusterRoleBinding (Admin access for pipelines)
+#### 5.2 ClusterRoleBinding
 
 ```bash
 cat <<EOF | kubectl apply -f -
@@ -238,7 +260,7 @@ subjects:
 EOF
 ```
 
-Since Jenkins controller pod was using service account `jenkins`, cluster-admin was applied:
+Since Jenkins controller pod used SA `jenkins`, binding applied:
 
 ```bash
 kubectl create clusterrolebinding jenkins-admin \
@@ -246,17 +268,18 @@ kubectl create clusterrolebinding jenkins-admin \
   --serviceaccount=jenkins:jenkins
 ```
 
-Verify Jenkins pod SA:
+Verify:
 
 ```bash
-kubectl get pod jenkins-0 -n jenkins -o jsonpath='{.spec.serviceAccountName}{"\n"}'
+kubectl get pod jenkins-0 -n jenkins -o jsonpath='{.spec.serviceAccountName}{"
+"}'
 ```
 
 ---
 
-## 10. AWS ECR Setup
+### 6) AWS ECR Repository Setup
 
-### 10.1 Create ECR Repository
+Create repo:
 
 ```bash
 aws ecr create-repository --repository-name demo-nginx --region ap-south-1
@@ -270,60 +293,52 @@ ECR URI:
 
 ---
 
-## 11. Add AWS Credentials in Jenkins
+### 7) Configure AWS Credentials in Jenkins
 
 Jenkins UI:
-**Manage Jenkins → Credentials → System → Global → Add Credentials**
 
-* Type: `Username with password`
+* **Manage Jenkins → Credentials → System → Global → Add Credentials**
+
+Credential:
+
+* Type: **Username with password**
 * ID: `aws-creds`
 * Username: `AWS_ACCESS_KEY_ID`
 * Password: `AWS_SECRET_ACCESS_KEY`
 
 ---
 
-## 12. GitHub Repository
+### 8) Jenkins Pipeline from GitHub (SCM Integration)
 
-Repository:
+Create Jenkins job:
 
-```text
-https://github.com/BhushanKhutle/jenkins-ecr-k8s-demo.git
-```
+* **New Item → Pipeline**
 
-Repo structure:
+Configure:
 
-```
-jenkins-ecr-k8s-demo/
-├── Dockerfile
-├── index.html
-└── Jenkinsfile
-```
-
----
-
-## 13. Jenkins Pipeline from SCM (GitHub Integration)
-
-### 13.1 Create Jenkins Job
-
-* New Item → Pipeline
-
-### 13.2 Configure Pipeline
-
-In Jenkins job:
-
-* Definition: ✅ Pipeline script from SCM
+* Definition: ✅ **Pipeline script from SCM**
 * SCM: Git
-* Repo URL: `https://github.com/BhushanKhutle/jenkins-ecr-k8s-demo.git`
-* Branch: `*/main`
-* Script path: `Jenkinsfile`
+* Repository URL:
 
-Pipeline build status: ✅ SUCCESS
+  ```text
+  https://github.com/BhushanKhutle/jenkins-ecr-k8s-demo.git
+  ```
+* Branch: `*/main`
+* Script Path: `Jenkinsfile`
+
+✅ Build executed successfully.
 
 ---
 
-## 14. GitHub Webhook Integration
+### 9) GitHub Webhook Integration
 
-### 14.1 Webhook URL
+#### 9.1 Enable trigger in Jenkins job
+
+In Jenkins Job → Configure → Build Triggers:
+
+* ✅ GitHub hook trigger for GITScm polling
+
+#### 9.2 Add webhook in GitHub repo
 
 Payload URL used:
 
@@ -331,27 +346,24 @@ Payload URL used:
 http://k8stesting-647846595.ap-south-1.elb.amazonaws.com/github-webhook/
 ```
 
-### 14.2 Jenkins Trigger
+Webhook config:
 
-In Jenkins job config:
-✅ Enable:
+* Content type: `application/json`
+* Events: `push`
 
-* GitHub hook trigger for GITScm polling
-
-Result:
-✅ Every push to GitHub triggers Jenkins pipeline automatically.
+✅ Every Git push triggers Jenkins pipeline automatically.
 
 ---
 
-## 15. Final Deployment Verification
+### 10) Validate Deployment
 
-Check resources:
+Check deployment:
 
 ```bash
 kubectl get deploy,pods,svc -n demo -o wide
 ```
 
-Test app access using NodePort:
+Test app:
 
 ```bash
 curl http://<worker-node-ip>:<nodeport>
@@ -359,21 +371,98 @@ curl http://<worker-node-ip>:<nodeport>
 
 ---
 
-## 16. Final Outcome
+## 🖼 Screenshots
 
-✅ Jenkins installed and operational on Kubernetes
-✅ Persistent storage configured using NFS provisioner
-✅ Kubernetes agent pods executing CI/CD pipelines
-✅ Docker images pushed to AWS ECR
-✅ Kubernetes deployment updated automatically
-✅ GitHub webhook triggers full pipeline
+Add screenshots here (recommended for portfolio):
+
+* ✅ Jenkins Dashboard
+* ✅ Pipeline successful build
+* ✅ AWS ECR image pushed
+* ✅ Kubernetes deployment + service
+* ✅ Application output in browser/curl
+
+Example folder structure:
+
+```text
+screenshots/
+├── 01-jenkins-dashboard.png
+├── 02-pipeline-success.png
+├── 03-ecr-image.png
+├── 04-k8s-deployment.png
+└── 05-app-output.png
+```
 
 ---
 
-## 17. Resume / Interview Bullet Points
+## 🧯 Troubleshooting
 
-* Implemented end-to-end CI/CD pipeline using Jenkins deployed on a kubeadm Kubernetes cluster.
-* Configured Jenkins persistent storage using NFS Dynamic Provisioner (StorageClass).
+### 1) Jenkins PVC stuck in Pending
+
+Cause: No StorageClass.
+Fix: Install NFS dynamic provisioner.
+
+Check:
+
+```bash
+kubectl get pvc -n jenkins
+kubectl get sc
+```
+
+---
+
+### 2) Jenkins Helm install fails with adminUser error
+
+Error:
+
+* `controller.adminUser no longer exists`
+
+Fix:
+Use:
+
+```yaml
+controller:
+  admin:
+    username: admin
+    password: "Jenkins@123"
+```
+
+---
+
+### 3) Jenkins pipeline fails: `checkout scm` not available
+
+Cause: Job is **Pipeline script**, not SCM-based.
+Fix:
+
+* Use **Pipeline script from SCM**
+
+---
+
+### 4) Kubernetes Agent pod `sh` not found
+
+Cause: Minimal images don’t contain `/bin/sh`.
+Fix:
+Use stable tool image:
+
+* `dtzar/helm-kubectl:3.15.4`
+
+---
+
+## 🚀 Future Enhancements
+
+* ✅ Deploy using **Helm chart** instead of kubectl create
+* ✅ Blue/Green or Canary Deployments
+* ✅ Add Rollback stage in pipeline
+* ✅ Add Prometheus + Grafana monitoring dashboard for app
+* ✅ Add centralized logging using Loki + Promtail
+* ✅ Configure TLS with cert-manager
+* ✅ Implement least privilege RBAC for Jenkins
+
+---
+
+## 🧾 Resume Bullet Points
+
+* Deployed Jenkins on kubeadm Kubernetes cluster using Helm with persistent volumes via NFS StorageClass.
+* Implemented end-to-end CI/CD pipeline using Jenkins Kubernetes agent pods.
 * Integrated GitHub webhook to trigger Jenkins builds automatically.
-* Built Docker images and pushed versioned tags to AWS ECR.
-* Automated Kubernetes deployments with rollout verification.
+* Built and pushed Docker images to AWS ECR with versioned tags.
+* Automated Kubernetes deployments with rollout verification and zero manual deployment steps.
