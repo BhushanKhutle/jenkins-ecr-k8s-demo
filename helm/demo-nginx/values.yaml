@@ -1,0 +1,20 @@
+image:
+  repository: 231907690017.dkr.ecr.ap-south-1.amazonaws.com/demo-nginx
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: NodePort
+  port: 80
+
+fullnameOverride: demo-nginx
+
+serviceAccount:
+  create: true
+  name: ""
+
+ingress:
+  enabled: false
+
+autoscaling:
+  enabled: false
