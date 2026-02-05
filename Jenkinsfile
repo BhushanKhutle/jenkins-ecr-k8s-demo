@@ -8,7 +8,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: kubectl
-    image: bitnami/kubectl:latest
+    image: dtzar/helm-kubectl:3.15.4
     command: ["cat"]
     tty: true
 
@@ -38,7 +38,6 @@ spec:
   }
 
   stages {
-
     stage("Checkout") {
       steps {
         checkout scm
@@ -55,18 +54,13 @@ spec:
       }
     }
 
-    stage("Login ECR & Push Image") {
+    stage("Login ECR + Push") {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'aws-creds',
-          usernameVariable: 'AWS_ACCESS_KEY_ID',
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-
+        withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
           container('docker') {
             sh '''
               apk add --no-cache aws-cli
-
-              aws ecr get-login-password --region $AWS_REGION \
-              | docker login --username AWS --password-stdin $ECR_REGISTRY
+              aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
 
               docker tag $APP_NAME:$BUILD_NUMBER $IMAGE:$BUILD_NUMBER
               docker push $IMAGE:$BUILD_NUMBER
@@ -80,44 +74,15 @@ spec:
       steps {
         container('kubectl') {
           sh '''
-            kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+            kubectl create ns $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-            echo "Creating/Updating Deployment..."
-            kubectl -n $NAMESPACE set image deployment/$APP_NAME $APP_NAME=$IMAGE:$BUILD_NUMBER --record || \
-            kubectl -n $NAMESPACE create deployment $APP_NAME --image=$IMAGE:$BUILD_NUMBER
+            kubectl -n $NAMESPACE set image deploy/$APP_NAME $APP_NAME=$IMAGE:$BUILD_NUMBER --record || \
+            kubectl -n $NAMESPACE create deploy $APP_NAME --image=$IMAGE:$BUILD_NUMBER
 
-            echo "Exposing Service..."
-            kubectl -n $NAMESPACE expose deployment $APP_NAME --port=80 --type=ClusterIP --dry-run=client -o yaml | kubectl apply -f -
-
-            echo "Creating/Updating Ingress..."
-            cat <<EOF | kubectl apply -f -
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: demo-nginx
-  namespace: demo
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /
-spec:
-  rules:
-  - http:
-      paths:
-      - path: /demo
-        pathType: Prefix
-        backend:
-          service:
-            name: demo-nginx
-            port:
-              number: 80
-EOF
-
-            kubectl -n $NAMESPACE rollout status deployment/$APP_NAME
+            kubectl -n $NAMESPACE rollout status deploy/$APP_NAME
           '''
         }
       }
     }
-
   }
 }
-
