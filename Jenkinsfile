@@ -82,8 +82,35 @@ spec:
           sh '''
             kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
+            echo "Creating/Updating Deployment..."
             kubectl -n $NAMESPACE set image deployment/$APP_NAME $APP_NAME=$IMAGE:$BUILD_NUMBER --record || \
             kubectl -n $NAMESPACE create deployment $APP_NAME --image=$IMAGE:$BUILD_NUMBER
+
+            echo "Exposing Service..."
+            kubectl -n $NAMESPACE expose deployment $APP_NAME --port=80 --type=ClusterIP --dry-run=client -o yaml | kubectl apply -f -
+
+            echo "Creating/Updating Ingress..."
+            cat <<EOF | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-nginx
+  namespace: demo
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /demo
+        pathType: Prefix
+        backend:
+          service:
+            name: demo-nginx
+            port:
+              number: 80
+EOF
 
             kubectl -n $NAMESPACE rollout status deployment/$APP_NAME
           '''
