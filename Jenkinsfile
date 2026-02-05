@@ -8,7 +8,7 @@ spec:
   serviceAccountName: jenkins
   containers:
   - name: kubectl
-    image: dtzar/helm-kubectl:3.15.4
+    image: bitnami/kubectl:latest
     command: ["cat"]
     tty: true
 
@@ -33,8 +33,8 @@ spec:
     ECR_REGISTRY = "231907690017.dkr.ecr.ap-south-1.amazonaws.com"
     ECR_REPO = "demo-nginx"
     IMAGE = "${ECR_REGISTRY}/${ECR_REPO}"
+    APP_NAME = "demo-nginx"
     NAMESPACE = "demo"
-    RELEASE_NAME = "demo-nginx"
   }
 
   stages {
@@ -49,7 +49,7 @@ spec:
       steps {
         container('docker') {
           sh '''
-            docker build -t demo-nginx:$BUILD_NUMBER .
+            docker build -t $APP_NAME:$BUILD_NUMBER .
           '''
         }
       }
@@ -68,7 +68,7 @@ spec:
               aws ecr get-login-password --region $AWS_REGION \
               | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-              docker tag demo-nginx:$BUILD_NUMBER $IMAGE:$BUILD_NUMBER
+              docker tag $APP_NAME:$BUILD_NUMBER $IMAGE:$BUILD_NUMBER
               docker push $IMAGE:$BUILD_NUMBER
             '''
           }
@@ -76,15 +76,16 @@ spec:
       }
     }
 
-    stage("Deploy using Helm") {
+    stage("Deploy to Kubernetes") {
       steps {
         container('kubectl') {
           sh '''
-            kubectl create ns $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+            kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-            helm upgrade --install $RELEASE_NAME ./helm/demo-nginx \
-              -n $NAMESPACE \
-              --set image.tag=$BUILD_NUMBER
+            kubectl -n $NAMESPACE set image deployment/$APP_NAME $APP_NAME=$IMAGE:$BUILD_NUMBER --record || \
+            kubectl -n $NAMESPACE create deployment $APP_NAME --image=$IMAGE:$BUILD_NUMBER
+
+            kubectl -n $NAMESPACE rollout status deployment/$APP_NAME
           '''
         }
       }
